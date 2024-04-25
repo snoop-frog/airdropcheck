@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Retorded Airdrop Checker</title>
     <style>
-        body, textarea, button {
+        body, textarea, button, table {
             font-family: 'Arial', sans-serif;
             background-color: #f0f4f8;
             color: #333;
@@ -45,7 +45,7 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
-            text-align: center; /* Center align table contents */
+            text-align: center;
         }
         th, td {
             padding: 8px;
@@ -54,7 +54,7 @@
         tr:hover {background-color: #f5f5f5;}
         img {
             border-radius: 5px;
-            max-width: 100px; /* Responsive images */
+            max-width: 100px;
         }
         @media screen and (max-width: 600px) {
             .container {
@@ -78,82 +78,117 @@
                 <tr>
                     <th>Collection Name</th>
                     <th>Count</th>
-                    <th>Last 24hr</th> <!-- Header for new items in the last 24 hours -->
+                    <th>Last 24hr</th>
                 </tr>
             </thead>
             <tbody id="collection-summary-body"></tbody>
-        </table>
-        <h2>Individual Wallet Collections</h2>
-        <table id="nft-collections">
-            <tbody id="individual-collections-body"></tbody>
-        </table>
+<table id="nft-collections">
+    <thead>
+        <tr>
+            <th>Wallet Address</th>
+            <th>Collection Image and Name</th>
+            <th>Description</th>
+            <th>Twitter Link</th>
+            <th>Website Link</th>
+            <th>Count in Wallet</th>
+        </tr>
+    </thead>
+    <tbody id="individual-collections-body"></tbody>
+</table>
+
     </div>
 
-    <script>
-        async function fetchNFTData() {
-            const addresses = document.getElementById('address-input').value.split('\n').slice(0, 50);
-            const container = document.getElementById('individual-collections-body'); // Changed to target tbody
-            const summaryContainer = document.getElementById('collection-summary-body'); // Changed to target tbody
-            container.innerHTML = ''; // Clear previous results
-            summaryContainer.innerHTML = ''; // Clear previous summary
+<script>
+    async function fetchNFTData() {
+        const addresses = document.getElementById('address-input').value.split('\n').slice(0, 50);
+        const container = document.getElementById('individual-collections-body');
+        const summaryContainer = document.getElementById('collection-summary-body');
+        container.innerHTML = '';
+        summaryContainer.innerHTML = '';
 
-            let totalCollections = {};
-            let newInLast24h = {}; // Store new collections count here
+        let totalCollections = {};
+        let newInLast24h = {};
+        const oneDayAgo = new Date(new Date().getTime() - (24 * 60 * 60 * 1000));
+        const delay = ms => new Promise(res => setTimeout(res, ms));
 
-            const oneDayAgo = new Date(new Date().getTime() - (24 * 60 * 60 * 1000)); // Time 24 hours ago
+        for (let address of addresses) {
+            address = address.trim();
+            if (!address) continue;
+            const shortAddress = address.substring(address.length - 5);
+            const url = `https://api.allorigins.win/raw?url=${encodeURIComponent('https://api-mainnet.magiceden.io/v2/ord/btc/wallets/collections?ownerAddress=')}${address}`;
 
-            for (let address of addresses) {
-                address = address.trim();
-                if (!address) continue;
-                const shortAddress = address.substring(address.length - 5); // Get last 5 characters for better identification
-                const url = `https://corsproxy.io/?${encodeURIComponent('https://api-mainnet.magiceden.io/v2/ord/btc/wallets/collections?ownerAddress=')}${address}`;
-                try {
-                    const response = await fetch(url);
-                    const data = await response.json(); // Getting all collections
+            try {
+                await delay(2000);
+                const response = await fetch(url);
+                const data = await response.json();
 
-                    // Add to total count and track new items
-                    data.forEach(collection => {
-                        const createdAt = new Date(collection.createdAt);
-                        totalCollections[collection.name] = (totalCollections[collection.name] || 0) + 1;
-                        if (createdAt > oneDayAgo) {
-                            newInLast24h[collection.name] = (newInLast24h[collection.name] || 0) + 1;
-                        }
-                    });
+                let collectionsInWallet = {};
+                data.forEach(collection => {
+                    const createdAt = new Date(collection.createdAt);
+                    const collectionName = collection.name;
 
-                    // Display individual collection information
-                    data.forEach(collection => {
-                        const row = container.insertRow(-1);
-                        const cell1 = row.insertCell(0);
-                        cell1.colSpan = 3; // Make sure this spans all columns
-                        cell1.innerHTML = `<strong>Address: ...${shortAddress}</strong>`;
-                        
-                        const cell2 = row.insertCell(1);
-                        cell2.innerHTML = `<img src="${collection.image}" alt="${collection.name}" style="width:100px;"> ${collection.name}`;
-                    });
-                } catch (error) {
-                    console.error('Fetch error:', error);
-                    const errorRow = container.insertRow(-1);
-                    const errorCell = errorRow.insertCell(0);
-                    errorCell.colSpan = 3; // Ensure this spans all columns for consistency
-                    errorCell.innerHTML = `<strong>Error fetching collections for address: ...${shortAddress}</strong>`;
-                }
+                    // Aggregate total counts and new in last 24 hours
+                    totalCollections[collectionName] = (totalCollections[collectionName] || 0) + 1;
+                    if (createdAt > oneDayAgo) {
+                        newInLast24h[collectionName] = (newInLast24h[collectionName] || 0) + 1;
+                    }
+
+                    // Gather details for individual wallet collections
+                    collectionsInWallet[collectionName] = collectionsInWallet[collectionName] || {
+                        image: collection.imageURI,
+                        description: collection.description,
+                        twitterLink: collection.twitterLink,
+                        websiteLink: collection.websiteLink,
+                        count: 0
+                    };
+                    collectionsInWallet[collectionName].count++;
+                });
+
+                // Populate individual collections table
+                Object.entries(collectionsInWallet).forEach(([name, info]) => {
+                    const row = container.insertRow();
+                    const cell1 = row.insertCell(0);
+                    const cell2 = row.insertCell(1);
+                    const cell3 = row.insertCell(2);
+                    const cell4 = row.insertCell(3);
+                    const cell5 = row.insertCell(4);
+                    const cell6 = row.insertCell(5);
+                    cell1.innerHTML = `<strong>...${shortAddress}</strong>`;
+                    cell2.innerHTML = `<img src="${info.image}" alt="${name}" style="width:100px;"> ${name}`;
+                    cell3.innerHTML = info.description;
+                    cell4.innerHTML = info.twitterLink ? `<a href="${info.twitterLink}" target="_blank">Twitter</a>` : 'N/A';
+                    cell5.innerHTML = info.websiteLink ? `<a href="${info.websiteLink}" target="_blank">Website</a>` : 'N/A';
+                    cell6.innerHTML = info.count;
+                });
+            } catch (error) {
+                console.error('Fetch error:', error);
+                const errorRow = container.insertRow();
+                const errorCell = errorRow.insertCell(0);
+                errorCell.colSpan = 6;
+                errorCell.innerHTML = `<strong>Error fetching collections for address: ...${shortAddress}</strong>`;
             }
-
-            // Display total collection counts and new in the last 24 hours in descending order
-            const entries = Object.entries(totalCollections);
-            const sortedEntries = entries.sort((a, b) => b[1] - a[1]); // Sort collections by count
-            sortedEntries.forEach(([name, count]) => {
-                const row = summaryContainer.insertRow(-1);
-                const cell1 = row.insertCell(0);
-                const cell2 = row.insertCell(1);
-                const cell3 = row.insertCell(2); // Cell for new collections in the last 24h
-
-                cell1.innerHTML = name;
-                cell2.innerHTML = count;
-                cell3.innerHTML = newInLast24h[name] || 0; // Show the count or 0 if none are new
-            });
         }
-    </script>
+
+        // Sort and update summary table
+        const sortedEntries = Object.entries(totalCollections).sort((a, b) => {
+            const newA = newInLast24h[a[0]] || 0;
+            const newB = newInLast24h[b[0]] || 0;
+            if (newA > newB) return -1;
+            if (newA < newB) return 1;
+            return b[1] - a[1];
+        });
+
+        sortedEntries.forEach(([name, count]) => {
+            const row = summaryContainer.insertRow();
+            const cell1 = row.insertCell(0);
+            const cell2 = row.insertCell(1);
+            const cell3 = row.insertCell(2);
+            cell1.innerHTML = name;
+            cell2.innerHTML = count;
+            cell3.innerHTML = newInLast24h[name] || 0;
+        });
+    }
+</script>
+
 </body>
 </html>
-
